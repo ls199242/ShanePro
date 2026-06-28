@@ -83,7 +83,12 @@ async def chat_with_ai(request: ChatRequest) -> ApiResponse[ChatResponse]:
     @return: 统一响应体，data 中包含 answer、thinking 和会话历史。
     """
     try:
-        result = await chat_service.chat(request.message, request.session_id, request.web_search_enabled)
+        result = await chat_service.chat(
+            request.message,
+            request.session_id,
+            request.web_search_enabled,
+            request.rag_enabled,
+        )
     except ValueError as exc:
         # 参数问题返回 400，方便前端区分用户输入错误和系统异常。
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -100,7 +105,8 @@ async def stream_chat_with_ai(request: ChatRequest) -> StreamingResponse:
 
     使用 Server-Sent Events 推送 session、LangChain agent 事件、agent_done 和 error。
     前端通过 `on_chat_model_stream`、`on_tool_start`、`on_tool_end`、`on_tool_error`
-    更新模型回复、工具调用和交互记录；`web_search_enabled=false` 时本轮不注册搜索工具。
+    更新模型回复、工具调用和交互记录；`web_search_enabled=false` 时本轮不注册搜索工具，
+    `rag_enabled=false` 时本轮不注册个人文档检索工具。
     """
 
     async def generate_events():
@@ -110,6 +116,7 @@ async def stream_chat_with_ai(request: ChatRequest) -> StreamingResponse:
                 request.message,
                 request.session_id,
                 request.web_search_enabled,
+                request.rag_enabled,
             ):
                 # service 层用 event 字段标识事件名，SSE payload 不再重复携带该字段。
                 event_name = event.pop("event")

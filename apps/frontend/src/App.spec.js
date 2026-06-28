@@ -84,6 +84,8 @@ describe('App', () => {
 
     expect(wrapper.text()).toContain('输入问题后开始会话')
     expect(wrapper.text()).toContain('发送')
+    expect(wrapper.text()).toContain('个人文档 RAG 开')
+    expect(wrapper.text()).not.toContain('上传文档')
   })
 
   it('switches to the document library from the sidebar', async () => {
@@ -97,7 +99,7 @@ describe('App', () => {
     expect(wrapper.text()).toContain('刷新文档')
   })
 
-  it('uploads and refreshes personal documents from the AI chat panel', async () => {
+  it('uploads and refreshes personal documents from the document library page', async () => {
     const documentSummary = {
       id: 'doc-1',
       filename: 'notes.md',
@@ -140,7 +142,7 @@ describe('App', () => {
 
     const wrapper = mount(App)
     await flushPromises()
-    await wrapper.get('button[aria-label="AI 问答"]').trigger('click')
+    await wrapper.get('button[aria-label="文档库"]').trigger('click')
 
     expect(wrapper.text()).toContain('个人文档库')
 
@@ -206,8 +208,11 @@ describe('App', () => {
     expect(wrapper.text()).toContain('backend-session-1')
     expect(wrapper.text()).toContain('第 1 轮')
     expect(JSON.parse(fetch.mock.calls[2][1].body).web_search_enabled).toBe(true)
+    expect(JSON.parse(fetch.mock.calls[2][1].body).rag_enabled).toBe(true)
     expect(wrapper.text()).toContain('"web_search_enabled": true')
+    expect(wrapper.text()).toContain('"rag_enabled": true')
     expect(wrapper.get('button[aria-label="关闭联网搜索"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('button[aria-label="关闭个人文档 RAG"]').attributes('disabled')).toBeDefined()
 
     const newChatButton = wrapper.findAll('button').find((button) => button.text() === '新建对话')
     expect(newChatButton).toBeTruthy()
@@ -218,9 +223,12 @@ describe('App', () => {
     expect(wrapper.text()).toContain('发送后展示每一轮入参和出参')
     expect(wrapper.text()).toContain('backend-session-1')
     expect(wrapper.get('button[aria-label="关闭联网搜索"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('button[aria-label="关闭个人文档 RAG"]').attributes('disabled')).toBeUndefined()
 
     await wrapper.get('button[aria-label="关闭联网搜索"]').trigger('click')
     expect(wrapper.get('button[aria-label="开启联网搜索"]').text()).toContain('联网搜索 关')
+    await wrapper.get('button[aria-label="关闭个人文档 RAG"]').trigger('click')
+    expect(wrapper.get('button[aria-label="开启个人文档 RAG"]').text()).toContain('个人文档 RAG 关')
   })
 
   it('sends AI chat with web search disabled from the toolbar toggle', async () => {
@@ -249,9 +257,42 @@ describe('App', () => {
     await flushPromises()
 
     expect(JSON.parse(fetch.mock.calls[2][1].body).web_search_enabled).toBe(false)
+    expect(JSON.parse(fetch.mock.calls[2][1].body).rag_enabled).toBe(true)
     expect(wrapper.text()).toContain('"web_search_enabled": false')
+    expect(wrapper.text()).toContain('"rag_enabled": true')
     expect(wrapper.text()).toContain('当前未启用联网搜索。')
     expect(wrapper.get('button[aria-label="开启联网搜索"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('sends AI chat with personal document RAG disabled from the toolbar toggle', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse({ data: { service: 'java-api', language: 'Java', status: 'UP' } }))
+        .mockResolvedValueOnce(jsonResponse({ data: { service: 'python-api', language: 'Python', status: 'UP' } }))
+        .mockResolvedValueOnce(streamResponse([
+          'event: session\ndata: {"session_id":"no-rag-session"}\n\n',
+          'event: on_chat_model_stream\ndata: {"name":"model","data":{"text":"当前未启用个人文档检索。"}}\n\n',
+          'event: agent_done\ndata: {"session_id":"no-rag-session","answer":"当前未启用个人文档检索。","history":[{"role":"user","content":"根据我的文档回答"},{"role":"assistant","content":"当前未启用个人文档检索。"}]}\n\n',
+        ])),
+    )
+
+    const wrapper = mount(App)
+    await flushPromises()
+    await wrapper.get('button[aria-label="AI 问答"]').trigger('click')
+    await wrapper.get('button[aria-label="关闭个人文档 RAG"]').trigger('click')
+
+    expect(wrapper.get('button[aria-label="开启个人文档 RAG"]').text()).toContain('个人文档 RAG 关')
+
+    await wrapper.get('textarea').setValue('根据我的文档回答')
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(JSON.parse(fetch.mock.calls[2][1].body).rag_enabled).toBe(false)
+    expect(wrapper.text()).toContain('"rag_enabled": false')
+    expect(wrapper.text()).toContain('当前未启用个人文档检索。')
+    expect(wrapper.get('button[aria-label="开启个人文档 RAG"]').attributes('disabled')).toBeDefined()
   })
 
   it('submits AI chat with Enter while keeping Shift Enter for line breaks', async () => {

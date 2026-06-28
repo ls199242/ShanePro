@@ -1,7 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { streamChatMessage } from '../api/services'
-import DocumentLibraryPanel from './DocumentLibraryPanel.vue'
 
 const input = ref('')
 const loading = ref(false)
@@ -18,6 +17,7 @@ function createSession() {
     messages: [],
     interactions: [],
     webSearchEnabled: true,
+    ragEnabled: true,
     createdAt: new Date().toLocaleString(),
     updatedAt: '',
   }
@@ -184,6 +184,10 @@ function isWebSearchEnabled(session) {
   return session?.webSearchEnabled !== false
 }
 
+function isRagEnabled(session) {
+  return session?.ragEnabled !== false
+}
+
 function canModifyWebSearch(session) {
   return Boolean(
     session
@@ -192,6 +196,10 @@ function canModifyWebSearch(session) {
       && session.messages.length === 0
       && session.interactions.length === 0,
   )
+}
+
+function canModifyRag(session) {
+  return canModifyWebSearch(session)
 }
 
 function toggleWebSearch() {
@@ -205,6 +213,17 @@ function toggleWebSearch() {
   }))
 }
 
+function toggleRag() {
+  if (!canModifyRag(activeSession.value)) {
+    return
+  }
+
+  updateSession(activeSession.value.id, (session) => ({
+    ...session,
+    ragEnabled: !isRagEnabled(session),
+  }))
+}
+
 async function submitMessage() {
   const content = input.value.trim()
   const currentSession = activeSession.value
@@ -213,10 +232,12 @@ async function submitMessage() {
   }
 
   const webSearchEnabled = isWebSearchEnabled(currentSession)
+  const ragEnabled = isRagEnabled(currentSession)
   const requestPayload = {
     message: content,
     session_id: currentSession.backendSessionId || null,
     web_search_enabled: webSearchEnabled,
+    rag_enabled: ragEnabled,
   }
   const interactionId = `interaction-${interactionSeq}`
   interactionSeq += 1
@@ -261,6 +282,7 @@ async function submitMessage() {
       message: content,
       sessionId: currentSession.backendSessionId,
       webSearchEnabled,
+      ragEnabled,
       onSession: (payload) => {
         streamSessionId = payload.session_id
         updateSession(currentSession.id, (session) => ({
@@ -388,7 +410,7 @@ function handleInputKeydown(event) {
         <h1 class="text-base font-semibold text-[var(--text)]">当前对话</h1>
         <p class="mt-1 text-xs text-[var(--text-muted)]">{{ activeSession.backendSessionId || '尚未建立后端 session' }}</p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center justify-end gap-2">
         <button
           type="button"
           class="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-semibold shadow-[var(--shadow-soft)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
@@ -405,6 +427,20 @@ function handleInputKeydown(event) {
         </button>
         <button
           type="button"
+          class="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-semibold shadow-[var(--shadow-soft)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          :class="isRagEnabled(activeSession)
+            ? 'border-[var(--button-border)] bg-[var(--accent-soft)] text-[var(--text)]'
+            : 'border-[var(--border-soft)] bg-[var(--surface)] text-[var(--text-muted)]'"
+          :aria-label="isRagEnabled(activeSession) ? '关闭个人文档 RAG' : '开启个人文档 RAG'"
+          :disabled="!canModifyRag(activeSession)"
+          :title="canModifyRag(activeSession) ? '设置新对话是否允许使用个人文档 RAG' : '当前对话已开始，新建对话后可修改个人文档 RAG'"
+          @click="toggleRag"
+        >
+          <span aria-hidden="true">文</span>
+          <span>个人文档 RAG {{ isRagEnabled(activeSession) ? '开' : '关' }}</span>
+        </button>
+        <button
+          type="button"
           class="rounded-md border border-[var(--button-border)] bg-[var(--button-bg)] px-3 py-1.5 text-xs font-semibold text-[var(--button-text)] shadow-[var(--shadow-soft)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           :disabled="loading"
           @click="createNewSession"
@@ -413,8 +449,6 @@ function handleInputKeydown(event) {
         </button>
       </div>
     </div>
-
-    <DocumentLibraryPanel class="mb-4" />
 
     <div class="h-[340px] overflow-auto rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 shadow-[var(--shadow)] backdrop-blur">
       <div

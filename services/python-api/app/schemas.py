@@ -50,11 +50,13 @@ class ChatRequest(BaseModel):
     @param message: 用户输入内容。
     @param session_id: 后端会话 ID；为空表示创建新会话。
     @param web_search_enabled: 是否允许本轮对话使用联网搜索工具。
+    @param rag_enabled: 是否允许本轮对话使用个人文档 RAG 工具。
     """
 
     message: str
     session_id: str | None = None
     web_search_enabled: bool = True
+    rag_enabled: bool = True
 
 
 class ChatMessage(BaseModel):

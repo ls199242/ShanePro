@@ -15,6 +15,7 @@ from pathlib import Path
 DEFAULT_PGVECTOR_CONNECTION = "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/postgres"
 DEFAULT_PGVECTOR_COLLECTION = "personal_documents_bge_m3"
 DEFAULT_EMBEDDING_MODEL = "BAAI/bge-m3"
+DEFAULT_BGE_M3_SAFETENSORS_REVISION = "refs/pr/130"
 DEFAULT_EMBEDDING_DEVICE = "cpu"
 DEFAULT_CHUNK_SIZE = 1000
 DEFAULT_CHUNK_OVERLAP = 150
@@ -30,6 +31,7 @@ class RagConfig:
     pgvector_connection: str
     pgvector_collection: str
     embedding_model: str
+    embedding_revision: str | None
     embedding_device: str
     chunk_size: int
     chunk_overlap: int
@@ -47,6 +49,11 @@ def load_rag_config() -> RagConfig:
     if chunk_overlap >= chunk_size:
         chunk_overlap = max(0, chunk_size // 5)
 
+    embedding_model = read_config("RAG_EMBEDDING_MODEL", local_env, settings_env, DEFAULT_EMBEDDING_MODEL)
+    embedding_revision = read_optional_config("RAG_EMBEDDING_REVISION", local_env, settings_env)
+    if embedding_revision is None and embedding_model == DEFAULT_EMBEDDING_MODEL:
+        embedding_revision = DEFAULT_BGE_M3_SAFETENSORS_REVISION
+
     return RagConfig(
         pgvector_connection=read_config(
             "RAG_PGVECTOR_CONNECTION",
@@ -60,7 +67,8 @@ def load_rag_config() -> RagConfig:
             settings_env,
             DEFAULT_PGVECTOR_COLLECTION,
         ),
-        embedding_model=read_config("RAG_EMBEDDING_MODEL", local_env, settings_env, DEFAULT_EMBEDDING_MODEL),
+        embedding_model=embedding_model,
+        embedding_revision=embedding_revision,
         embedding_device=read_config("RAG_EMBEDDING_DEVICE", local_env, settings_env, DEFAULT_EMBEDDING_DEVICE),
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
@@ -75,6 +83,12 @@ def load_rag_config() -> RagConfig:
 def read_config(name: str, local_env: dict[str, str], settings_env: dict[str, str], default: str) -> str:
     """按环境变量优先级读取字符串配置。"""
     return os.environ.get(name) or local_env.get(name) or settings_env.get(name) or default
+
+
+def read_optional_config(name: str, local_env: dict[str, str], settings_env: dict[str, str]) -> str | None:
+    """按环境变量优先级读取可选字符串配置。"""
+    value = os.environ.get(name) or local_env.get(name) or settings_env.get(name)
+    return value or None
 
 
 def parse_positive_int(name: str, local_env: dict[str, str], settings_env: dict[str, str], default: int) -> int:

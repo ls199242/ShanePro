@@ -111,7 +111,7 @@ export WEB_SEARCH_PROVIDER="serper"
 export SERPER_API_KEY="你的 Serper key"
 ```
 
-未配置对应搜索 key 时，普通聊天不受影响；如果 Agent 决定调用搜索工具，交互记录中会显示工具调用失败原因。前端 AI 问答页提供“联网搜索”按钮，本轮请求会通过 `web_search_enabled` 控制是否向 Agent 注册搜索工具。
+未配置对应搜索 key 时，普通聊天不受影响；如果 Agent 决定调用搜索工具，交互记录中会显示工具调用失败原因。前端 AI 问答页提供“联网搜索”和“个人文档 RAG”按钮，本轮请求会通过 `web_search_enabled` 和 `rag_enabled` 控制是否向 Agent 注册对应工具。
 
 个人文档 RAG 使用本机 Docker pgvector + 本地 BGE-M3 embedding。原始上传文件写到 `RAG_UPLOAD_DIR`，解析后的完整纯文本写到 `RAG_PARSED_TEXT_DIR`，文档元数据和向量写入 PostgreSQL：
 
@@ -119,6 +119,7 @@ export SERPER_API_KEY="你的 Serper key"
 export RAG_PGVECTOR_CONNECTION="postgresql+psycopg://postgres:postgres@127.0.0.1:5432/postgres"
 export RAG_PGVECTOR_COLLECTION="personal_documents_bge_m3"
 export RAG_EMBEDDING_MODEL="BAAI/bge-m3"
+export RAG_EMBEDDING_REVISION="refs/pr/130"
 export RAG_EMBEDDING_DEVICE="cpu"
 export RAG_CHUNK_SIZE="1000"
 export RAG_CHUNK_OVERLAP="150"
@@ -127,7 +128,7 @@ export RAG_UPLOAD_DIR="data/uploads"
 export RAG_PARSED_TEXT_DIR="data/parsed"
 ```
 
-首次向量化会下载 `BAAI/bge-m3` 到 Hugging Face 缓存。上传接口基于 MD5 做本地判重，重复文件会直接返回已有文档；非重复文件上传后先保存元数据，再手动触发解析、切分和向量化。
+首次向量化会下载 `BAAI/bge-m3` 到 Hugging Face 缓存。默认使用 `refs/pr/130` revision 的 safetensors 权重，以兼容 macOS Intel 上无法安装 torch 2.6+ 的环境。上传接口基于 MD5 做本地判重，重复文件会直接返回已有文档；非重复文件上传后先保存元数据，再手动触发解析、切分和向量化。
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/documents/upload \
@@ -163,7 +164,7 @@ AI 问答：
 ```bash
 curl -X POST http://127.0.0.1:8000/api/chat \
   -H 'Content-Type: application/json' \
-  -d '{"message":"你好","session_id":null,"web_search_enabled":true}'
+  -d '{"message":"你好","session_id":null,"web_search_enabled":true,"rag_enabled":true}'
 ```
 
 FastAPI 文档页面：

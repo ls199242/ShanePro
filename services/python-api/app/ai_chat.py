@@ -48,6 +48,10 @@ PERSONAL_KNOWLEDGE_SYSTEM_PROMPT = (
     "调用 personal_knowledge_search 工具。"
     "回答个人文档相关问题时优先基于检索结果；如果没有找到可靠依据，请明确说明。"
 )
+NO_PERSONAL_KNOWLEDGE_SYSTEM_PROMPT = (
+    "本轮未启用个人文档 RAG 工具。不要声称已经查询了用户上传文档；"
+    "如果问题依赖个人文档内容，请说明当前未启用个人文档检索。"
+)
 CURRENT_TIME_SYSTEM_PROMPT = (
     "当前时间：{current_time}。"
     "回答涉及今天、昨天、明天、当前、最新、截止时间等相对时间时，必须以这个时间为准。"
@@ -62,7 +66,7 @@ class AiChatService:
     """
 
     def __init__(self) -> None:
-        self._agents: dict[bool, Any] = {}
+        self._agents: dict[tuple[bool, bool], Any] = {}
         self._checkpointer: Any | None = None
         self._agent_lock = asyncio.Lock()
 
@@ -71,12 +75,14 @@ class AiChatService:
         message: str,
         session_id: str | None = None,
         web_search_enabled: bool = True,
+        rag_enabled: bool = True,
     ) -> ChatResponse:
         """执行一次非流式 Agent 对话。
 
         @param message: 用户输入内容，不能为空。
         @param session_id: 后端会话 ID；为空时创建新会话。
         @param web_search_enabled: 是否允许 Agent 在本轮调用联网搜索工具。
+        @param rag_enabled: 是否允许 Agent 在本轮调用个人文档 RAG 工具。
         @return: 模型回复、thinking 内容、工具调用记录和会话历史。
         @raises ValueError: 用户输入为空时抛出。
         @raises RuntimeError: 模型配置缺失或 Agent 调用失败时抛出。
@@ -86,7 +92,7 @@ class AiChatService:
             raise ValueError("message cannot be empty")
 
         current_session_id = session_id or uuid4().hex
-        agent = await self._get_agent(web_search_enabled)
+        agent = await self._get_agent(web_search_enabled, rag_enabled)
         config = build_agent_config(current_session_id)
         result = await agent.ainvoke({"messages": [{"role": "user", "content": content}]}, config=config)
         messages = get_agent_messages(result)
@@ -106,6 +112,7 @@ class AiChatService:
         message: str,
         session_id: str | None = None,
         web_search_enabled: bool = True,
+        rag_enabled: bool = True,
     ) -> AsyncIterator[dict[str, Any]]:
         """执行一次流式 Agent 对话。
 
@@ -114,6 +121,7 @@ class AiChatService:
         - LangChain 原生事件：`on_chat_model_stream`、`on_tool_start`、`on_tool_end`、`on_tool_error`；
         - `agent_done`: Agent 流结束后的最终响应、工具记录和会话历史。
         - `web_search_enabled=false`: 本轮 Agent 不注册 `web_search` 工具。
+        - `rag_enabled=false`: 本轮 Agent 不注册 `personal_knowledge_search` 工具。
         """
         content = message.strip()
         if not content:
@@ -122,7 +130,7 @@ class AiChatService:
         current_session_id = session_id or uuid4().hex
         yield {"event": "session", "session_id": current_session_id}
 
-        agent = await self._get_agent(web_search_enabled)
+        agent = await self._get_agent(web_search_enabled, rag_enabled)
         config = build_agent_config(current_session_id)
         stream_answer = ""
         stream_thinking = ""
@@ -156,30 +164,31 @@ class AiChatService:
             "history": [item.model_dump(exclude_none=True) for item in messages_to_chat_history(messages)],
         }
 
-    async def _get_agent(self, web_search_enabled: bool) -> Any:
-        """按联网搜索开关懒加载 LangChain Agent。
+    async def _get_agent(self, web_search_enabled: bool, rag_enabled: bool) -> Any:
+        """按联网搜索和 RAG 开关懒加载 LangChain Agent。
 
-        两个 Agent 共享同一个 InMemorySaver，避免同一 session 在开关切换后丢失历史。
+        多个 Agent 共享同一个 InMemorySaver，避免同一 session 在开关切换后丢失历史。
         """
-        if web_search_enabled in self._agents:
-            return self._agents[web_search_enabled]
+        agent_key = (web_search_enabled, rag_enabled)
+        if agent_key in self._agents:
+            return self._agents[agent_key]
 
         async with self._agent_lock:
             if self._checkpointer is None:
                 self._checkpointer = build_checkpointer()
-            if web_search_enabled not in self._agents:
-                self._agents[web_search_enabled] = build_agent(web_search_enabled, self._checkpointer)
-        return self._agents[web_search_enabled]
+            if agent_key not in self._agents:
+                self._agents[agent_key] = build_agent(web_search_enabled, rag_enabled, self._checkpointer)
+        return self._agents[agent_key]
 
 
-def build_agent(web_search_enabled: bool = True, checkpointer: Any | None = None) -> Any:
+def build_agent(web_search_enabled: bool = True, rag_enabled: bool = True, checkpointer: Any | None = None) -> Any:
     """创建 LangChain Agent。"""
     from langchain.agents import create_agent
 
     return create_agent(
         model=build_chat_model(),
-        tools=build_agent_tools(web_search_enabled),
-        middleware=[build_dynamic_system_prompt(web_search_enabled)],
+        tools=build_agent_tools(web_search_enabled, rag_enabled),
+        middleware=[build_dynamic_system_prompt(web_search_enabled, rag_enabled)],
         checkpointer=checkpointer or build_checkpointer(),
     )
 
@@ -191,31 +200,38 @@ def build_checkpointer() -> Any:
     return InMemorySaver()
 
 
-def build_agent_tools(web_search_enabled: bool) -> list[Any]:
-    """根据本轮联网搜索开关返回 Agent 工具列表。"""
-    tools = [build_personal_knowledge_agent_tool()]
+def build_agent_tools(web_search_enabled: bool, rag_enabled: bool = True) -> list[Any]:
+    """根据本轮工具开关返回 Agent 工具列表。"""
+    tools = []
+    if rag_enabled:
+        tools.append(build_personal_knowledge_agent_tool())
     if web_search_enabled:
         tools.append(build_web_search_agent_tool())
     return tools
 
 
-def build_dynamic_system_prompt(web_search_enabled: bool) -> Any:
+def build_dynamic_system_prompt(web_search_enabled: bool, rag_enabled: bool = True) -> Any:
     """创建每次模型调用前动态生成系统提示词的 middleware。"""
     from langchain.agents.middleware import dynamic_prompt
 
     @dynamic_prompt
     def current_system_prompt(_request: Any) -> str:
-        return build_system_prompt(web_search_enabled)
+        return build_system_prompt(web_search_enabled, rag_enabled)
 
     return current_system_prompt
 
 
-def build_system_prompt(web_search_enabled: bool, current_time: datetime | None = None) -> str:
-    """根据本轮联网搜索开关和当前时间生成系统提示词。"""
+def build_system_prompt(
+    web_search_enabled: bool,
+    rag_enabled: bool = True,
+    current_time: datetime | None = None,
+) -> str:
+    """根据本轮工具开关和当前时间生成系统提示词。"""
     time_prompt = CURRENT_TIME_SYSTEM_PROMPT.format(
         current_time=format_current_time(current_time or get_current_time()),
     )
-    base_prompt = SYSTEM_PROMPT + time_prompt + PERSONAL_KNOWLEDGE_SYSTEM_PROMPT
+    base_prompt = SYSTEM_PROMPT + time_prompt
+    base_prompt += PERSONAL_KNOWLEDGE_SYSTEM_PROMPT if rag_enabled else NO_PERSONAL_KNOWLEDGE_SYSTEM_PROMPT
     if web_search_enabled:
         return base_prompt + WEB_SEARCH_SYSTEM_PROMPT
     return base_prompt + NO_WEB_SEARCH_SYSTEM_PROMPT

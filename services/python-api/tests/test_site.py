@@ -44,6 +44,7 @@ class StubChatService:
         message: str,
         session_id: str | None = None,
         web_search_enabled: bool = True,
+        rag_enabled: bool = True,
     ) -> ChatResponse:
         """返回一轮固定非流式响应。"""
         self.chat_calls.append(
@@ -51,6 +52,7 @@ class StubChatService:
                 "message": message,
                 "session_id": session_id,
                 "web_search_enabled": web_search_enabled,
+                "rag_enabled": rag_enabled,
             },
         )
         current_session_id = session_id or "test-session"
@@ -68,6 +70,7 @@ class StubChatService:
         message: str,
         session_id: str | None = None,
         web_search_enabled: bool = True,
+        rag_enabled: bool = True,
     ):
         """按真实 SSE 事件顺序返回固定流式响应。"""
         self.stream_calls.append(
@@ -75,6 +78,7 @@ class StubChatService:
                 "message": message,
                 "session_id": session_id,
                 "web_search_enabled": web_search_enabled,
+                "rag_enabled": rag_enabled,
             },
         )
         current_session_id = session_id or "test-session"
@@ -325,6 +329,7 @@ def build_document_service(
         pgvector_connection="postgresql+psycopg://postgres:postgres@127.0.0.1:5432/postgres",
         pgvector_collection="test_documents",
         embedding_model="BAAI/bge-m3",
+        embedding_revision="refs/pr/130",
         embedding_device="cpu",
         chunk_size=12,
         chunk_overlap=2,
@@ -416,6 +421,7 @@ def test_chat_with_ai_returns_session_history(monkeypatch):
             "session_id": "abc123",
             "message": "你好",
             "web_search_enabled": False,
+            "rag_enabled": False,
         },
     )
 
@@ -425,6 +431,7 @@ def test_chat_with_ai_returns_session_history(monkeypatch):
             "message": "你好",
             "session_id": "abc123",
             "web_search_enabled": False,
+            "rag_enabled": False,
         },
     ]
     assert response.json() == {
@@ -466,10 +473,15 @@ def test_build_system_prompt_respects_web_search_switch():
     assert "未启用联网搜索" in build_system_prompt(False)
 
 
+def test_build_system_prompt_respects_rag_switch():
+    assert "personal_knowledge_search" in build_system_prompt(True, True)
+    assert "未启用个人文档 RAG" in build_system_prompt(True, False)
+
+
 def test_build_system_prompt_includes_current_time():
     current_time = datetime(2026, 6, 25, 15, 30, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
 
-    prompt = build_system_prompt(True, current_time)
+    prompt = build_system_prompt(True, True, current_time)
 
     assert "当前时间：2026-06-25 15:30:00 CST (Asia/Shanghai)" in prompt
     assert "相对时间" in prompt
@@ -650,6 +662,7 @@ def test_stream_chat_with_ai_returns_sse_events(monkeypatch):
             "session_id": "abc123",
             "message": "你好",
             "web_search_enabled": False,
+            "rag_enabled": False,
         },
     )
 
@@ -659,6 +672,7 @@ def test_stream_chat_with_ai_returns_sse_events(monkeypatch):
             "message": "你好",
             "session_id": "abc123",
             "web_search_enabled": False,
+            "rag_enabled": False,
         },
     ]
     assert "text/event-stream" in response.headers["content-type"]

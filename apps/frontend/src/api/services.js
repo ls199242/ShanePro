@@ -102,13 +102,15 @@ export async function fetchServiceStatuses(configs = serviceConfigs) {
  * @param {string} params.message - 用户输入内容。
  * @param {string} [params.sessionId] - 后端会话 ID。
  * @param {boolean} [params.webSearchEnabled=true] - 是否允许本轮使用联网搜索。
+ * @param {boolean} [params.ragEnabled=true] - 是否允许本轮使用个人文档 RAG。
  * @returns {Promise<Object>} AI 对话响应。
  */
-export async function sendChatMessage({ message, sessionId, webSearchEnabled = true }) {
+export async function sendChatMessage({ message, sessionId, webSearchEnabled = true, ragEnabled = true }) {
   return postJson('/python-api/api/chat', {
     message,
     session_id: sessionId || null,
     web_search_enabled: webSearchEnabled,
+    rag_enabled: ragEnabled,
   })
 }
 
@@ -162,6 +164,7 @@ export async function deleteDocument(documentId) {
  * @param {string} params.message - 用户输入内容。
  * @param {string} [params.sessionId] - 后端会话 ID。
  * @param {boolean} [params.webSearchEnabled=true] - 是否允许本轮使用联网搜索。
+ * @param {boolean} [params.ragEnabled=true] - 是否允许本轮使用个人文档 RAG。
  * @param {Function} [params.onSession] - 收到 session 事件时调用。
  * @param {Function} [params.onAgentEvent] - 收到 LangChain agent 事件时调用。
  * @param {Function} [params.onDone] - 收到最终响应时调用。
@@ -171,6 +174,7 @@ export async function streamChatMessage({
   message,
   sessionId,
   webSearchEnabled = true,
+  ragEnabled = true,
   onSession,
   onAgentEvent,
   onDone,
@@ -184,6 +188,7 @@ export async function streamChatMessage({
       message,
       session_id: sessionId || null,
       web_search_enabled: webSearchEnabled,
+      rag_enabled: ragEnabled,
     }),
   })
 

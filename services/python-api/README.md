@@ -48,6 +48,7 @@ Configuration:
 export RAG_PGVECTOR_CONNECTION="postgresql+psycopg://postgres:postgres@127.0.0.1:5432/postgres"
 export RAG_PGVECTOR_COLLECTION="personal_documents_bge_m3"
 export RAG_EMBEDDING_MODEL="BAAI/bge-m3"
+export RAG_EMBEDDING_REVISION="refs/pr/130"
 export RAG_EMBEDDING_DEVICE="cpu"
 export RAG_CHUNK_SIZE="1000"
 export RAG_CHUNK_OVERLAP="150"
@@ -72,6 +73,12 @@ List documents:
 curl http://127.0.0.1:8000/api/documents
 ```
 
+Process a document:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/documents/{document_id}/process
+```
+
 Search documents:
 
 ```bash
@@ -80,14 +87,14 @@ curl -X POST http://127.0.0.1:8000/api/documents/search \
   -d '{"query":"这份文档讲了什么？","top_k":5}'
 ```
 
-The first upload may download `BAAI/bge-m3` into the Hugging Face cache. The upload API uses MD5 for local duplicate detection. Parsed full text is written to `RAG_PARSED_TEXT_DIR/{document_id}.txt`, and chunk text plus vectors are written to pgvector.
+The first vectorization may download `BAAI/bge-m3` into the Hugging Face cache. By default the service uses the `refs/pr/130` safetensors revision so macOS Intel can keep using the available torch wheel without triggering `torch.load`. The upload API uses MD5 for local duplicate detection. Parsed full text is written to `RAG_PARSED_TEXT_DIR/{document_id}.txt`, and chunk text plus vectors are written to pgvector.
 
 Request:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/chat \
   -H 'Content-Type: application/json' \
-  -d '{"message":"你好","session_id":null,"web_search_enabled":true}'
+  -d '{"message":"你好","session_id":null,"web_search_enabled":true,"rag_enabled":true}'
 ```
 
 The service keeps chat history in memory by `session_id`. Restarting the Python process clears the history.
