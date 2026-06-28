@@ -12,12 +12,12 @@
 | Port | `5432` |
 | Database | `suprag_vector` |
 | Username | `postgres` |
-| Password | `suprag` |
+| Password | `<your-local-password>` |
 
 标准 PostgreSQL 连接串：
 
 ```text
-postgresql://postgres:suprag@127.0.0.1:5432/suprag_vector
+postgresql://postgres:<your-local-password>@127.0.0.1:5432/suprag_vector
 ```
 
 项目 RAG 配置文件：
@@ -29,7 +29,7 @@ services/python-api/.env.local
 项目使用的 SQLAlchemy / LangChain 连接串格式：
 
 ```bash
-RAG_PGVECTOR_CONNECTION="postgresql+psycopg://postgres:suprag@127.0.0.1:5432/suprag_vector"
+RAG_PGVECTOR_CONNECTION="postgresql+psycopg://postgres:<your-local-password>@127.0.0.1:5432/suprag_vector"
 ```
 
 `.env.local` 是本机私有配置，不应提交到 Git。
@@ -159,7 +159,7 @@ select count(*) from kb_chunk_embedding;
 | Port | `5432` |
 | Database | `suprag_vector` |
 | User | `postgres` |
-| Password | `suprag` |
+| Password | `<your-local-password>` |
 
 连接后重点查看：
 

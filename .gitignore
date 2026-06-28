@@ -1,10 +1,12 @@
 node_modules/
+.pnpm-store/
 dist/
 coverage/
 
 .env
 .env.*
 !.env.example
+.envrc
 .uv-cache/
 
 .venv/
@@ -19,3 +21,14 @@ target/
 
 .DS_Store
 *.log
+
+# Local credentials / private keys
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+credentials
+credentials.*
+application-local.yml
+application-local.yaml
